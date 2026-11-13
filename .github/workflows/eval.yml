@@ -1,0 +1,27 @@
+name: Eval
+
+on:
+  workflow_dispatch:
+
+jobs:
+  eval:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Run detector evaluation on blister10 fixture
+        working-directory: Eval
+        run: |
+          set -o pipefail
+          swift run -c release countlog-eval fixtures/blister10.jpg fixtures/blister10.json 2>&1 | tee eval-results.txt
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: Eval/eval-results.txt
