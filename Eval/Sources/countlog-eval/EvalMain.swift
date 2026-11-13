@@ -15,12 +15,19 @@ import ImageIO
 // A returned point is a "hit" when it lies within 0.05 normalized units
 // (Euclidean, in 0..1 x 0..1 space) of any ground-truth pocket center;
 // otherwise it is "false". Ground truth for this fixture is 10 pockets.
+//
+// Output goes through FileHandle writes so progress lines survive even if
+// a detector call crashes (stdout print() is block-buffered when piped).
 
 struct Fixture: Decodable {
     struct Rect: Decodable { let x: Double; let y: Double; let width: Double; let height: Double }
     struct Pocket: Decodable { let row: Int; let col: Int; let center: [Double]; let state: String }
     let exemplarRect: Rect
     let pockets: [Pocket]
+}
+
+func out(_ line: String) {
+    FileHandle.standardOutput.write((line + "\n").data(using: .utf8)!)
 }
 
 func loadCGImage(path: String) -> CGImage? {
@@ -31,6 +38,13 @@ func loadCGImage(path: String) -> CGImage? {
 }
 
 func fmt(_ v: Double) -> String { String(format: "%.3f", v) }
+
+func pad(_ s: String, _ width: Int) -> String {
+    s.count >= width ? s : s + String(repeating: " ", count: width - s.count)
+}
+func padL(_ s: String, _ width: Int) -> String {
+    s.count >= width ? s : String(repeating: " ", count: width - s.count) + s
+}
 
 @main
 struct EvalMain {
@@ -63,41 +77,49 @@ struct EvalMain {
             return (hits, points.count - hits)
         }
 
-        print("fixture: \(imagePath)  image \(cgImage.width)x\(cgImage.height)  groundTruth=\(truth.count) pockets (\(fixture.pockets.filter { $0.state == "full" }.count) full / \(fixture.pockets.filter { $0.state == "empty" }.count) empty)")
-        print("exemplarRect: x=\(fmt(exemplar.minX)) y=\(fmt(exemplar.minY)) w=\(fmt(Double(exemplar.width))) h=\(fmt(Double(exemplar.height)))  hitRadius=\(hitRadius)")
-        print("")
-        print("method                  threshold  count  hits  false")
-        print("----------------------  ---------  -----  ----  -----")
+        out("fixture: \(imagePath)  image \(cgImage.width)x\(cgImage.height)  groundTruth=\(truth.count) pockets (\(fixture.pockets.filter { $0.state == "full" }.count) full / \(fixture.pockets.filter { $0.state == "empty" }.count) empty)")
+        out("exemplarRect: x=\(fmt(exemplar.minX)) y=\(fmt(exemplar.minY)) w=\(fmt(Double(exemplar.width))) h=\(fmt(Double(exemplar.height)))  hitRadius=\(hitRadius)")
+        out("")
+        out(pad("method", 22) + "  " + padL("threshold", 9) + "  " + padL("count", 5) + "  " + padL("hits", 4) + "  " + padL("false", 5))
+        out(String(repeating: "-", count: 22) + "  " + String(repeating: "-", count: 9) + "  " + String(repeating: "-", count: 5) + "  " + String(repeating: "-", count: 4) + "  " + String(repeating: "-", count: 5))
 
         func row(_ method: String, _ threshold: String, _ points: [CGPoint]) {
             let s = score(points)
-            print(String(format: "%-22s  %9s  %5d  %4d  %5d", method, threshold, points.count, s.hits, s.false))
+            out(pad(method, 22) + "  " + padL(threshold, 9) + "  " + padL(String(points.count), 5) + "  " + padL(String(s.hits), 4) + "  " + padL(String(s.false), 5))
             let list = points.map { "(\(fmt(Double($0.x))),\(fmt(Double($0.y))))" }.joined(separator: " ")
-            print("  points: \(list.isEmpty ? "(none)" : list)")
+            out("  points: \(list.isEmpty ? "(none)" : list)")
         }
 
         let thresholds: [Float] = [0.5, 0.6, 0.7, 0.78, 0.85]
         for t in thresholds {
+            let tLabel = String(format: "%.2f", t)
+            out("running exemplarMatch threshold=\(tLabel) ...")
             do {
                 let pts = try await CounterEngine.exemplarMatch(
                     cgImage: cgImage, exemplarRectNormalized: exemplar, threshold: t)
-                row("exemplarMatch", String(format: "%.2f", t), pts)
+                out("  exemplarMatch \(tLabel) returned \(pts.count) points")
+                row("exemplarMatch", tLabel, pts)
             } catch {
-                print(String(format: "%-22s  %9s  ERROR %@", "exemplarMatch", String(format: "%.2f", t), String(describing: error)))
+                out(pad("exemplarMatch", 22) + "  " + padL(tLabel, 9) + "  ERROR \(error)")
             }
         }
 
+        out("running blobCount with exemplar area ...")
         do {
             let pts = try await CounterEngine.blobCount(cgImage: cgImage, exemplarRectNormalized: exemplar)
+            out("  blobCount+exemplarArea returned \(pts.count) points")
             row("blobCount+exemplarArea", "-", pts)
         } catch {
-            print("blobCount+exemplarArea  ERROR \(error)")
+            out("blobCount+exemplarArea  ERROR \(error)")
         }
+        out("running blobCount without exemplar area ...")
         do {
             let pts = try await CounterEngine.blobCount(cgImage: cgImage, exemplarRectNormalized: nil)
+            out("  blobCount returned \(pts.count) points")
             row("blobCount", "-", pts)
         } catch {
-            print("blobCount  ERROR \(error)")
+            out("blobCount  ERROR \(error)")
         }
+        out("done")
     }
 }
