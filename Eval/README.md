@@ -12,8 +12,11 @@ known ground truth, on macOS (locally or in GitHub Actions).
 ### blister10 (flagship case)
 
 `fixtures/blister10.jpg` + `fixtures/blister10.json` — a PTP blister sheet
-of 10 tablets (2 columns x 5 rows), the primary form factor for the
-pharmacist-first direction of CountLog. Every pocket is labelled `full`
+of 10 tablets (2 columns x 5 rows). Note on product direction: CountLog's
+first sales market is industrial (manufacturing shipping/receiving)
+inspection, with pharmacy deferred to a possible phase 2; the PTP blister
+fixture is used here as the tractable training subject for the engine.
+Every pocket is labelled `full`
 (all 10 contain tablets); the phase-2 grid-based detector will be scored
 against these per-pocket labels.
 
@@ -53,4 +56,41 @@ printed table is in the job log and in the `eval-results` artifact.
 
 ## Baseline results (v0.1 detector, 2026-11-13)
 
-_PENDING — filled in from the first CI run._
+From the successful Eval workflow run:
+https://github.com/suica10/countlog/actions/runs/43412009803
+(macOS 26 runner; full point lists are in that run's `eval-results`
+artifact.)
+
+| method | threshold | count | hits | false | pockets covered |
+|---|---|---|---|---|---|
+| exemplarMatch | 0.50 | 1 | 1 | 0 | 1/10 |
+| exemplarMatch | 0.60 | 1 | 1 | 0 | 1/10 |
+| exemplarMatch | 0.70 | 8 | 4 | 4 | 2/10 |
+| exemplarMatch | 0.78 | 23 | 14 | 9 | 6/10 |
+| exemplarMatch | 0.85 | 91 | 27 | 64 | 10/10 |
+| blobCount (exemplar area) | – | 2 | 0 | 2 | 0/10 |
+| blobCount (no exemplar) | – | 12 | 0 | 12 | 0/10 |
+
+("Pockets covered" = distinct ground-truth pockets with at least one hit.
+`hits` counts points, so at loose thresholds several points pile onto the
+same pocket — e.g. at 0.78, 14 hits cover only 6 pockets.)
+
+How to read this:
+
+- At strict thresholds (0.5–0.6, around the app's default) exemplarMatch
+  finds essentially only the exemplar pocket itself: the feature print of
+  one white tablet does not generalize to its nine identical siblings.
+  Recall is 1/10 at usable precision.
+- Loosening the threshold buys coverage with duplicates and junk: at 0.85
+  every pocket is "covered", but by 91 points, 64 of them false — foil
+  print, desk, and repeated windows around the same pockets (the NMS radius
+  of 0.45 x window size is too small to merge them).
+- blobCount is hopeless on this subject in both modes (0 hits): tablets
+  and foil have similar brightness, so Otsu binarization never isolates
+  the tablets; its points land on desk reflections and the sheet's edge.
+- No vertical flip: returned points cluster at the real tablet positions
+  in top-left normalized coordinates, so the engine's CGImage cropping
+  orientation assumption is consistent (at least on macOS).
+- Offline counts differ from the on-device trial (17 at 0.78) because the
+  exemplar here is a tight programmatic box and the image is the
+  screenshot crop; the failure mode is the same.
