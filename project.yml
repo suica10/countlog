@@ -1,0 +1,42 @@
+name: CountLog
+options:
+  bundleIdPrefix: jp.onejpkey
+  deploymentTarget:
+    iOS: '17.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.9'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: '1'
+    CODE_SIGNING_ALLOWED: NO
+    CODE_SIGNING_REQUIRED: NO
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  CountLog:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: jp.onejpkey.countlog
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDisplayName: 検数ログ
+        NSCameraUsageDescription: "数量検査の写真を撮影するためにカメラを使用します。"
+        NSPhotoLibraryUsageDescription: "数量検査の写真を選ぶためにフォトライブラリにアクセスします。"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+schemes:
+  CountLog:
+    build:
+      targets:
+        CountLog: all

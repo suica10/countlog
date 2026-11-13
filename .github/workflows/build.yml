@@ -1,0 +1,72 @@
+name: Build unsigned IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'App/**'
+      - 'project.yml'
+      - '.github/workflows/build.yml'
+permissions:
+  contents: read
+concurrency:
+  group: ipa-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Generate Xcode project
+        run: |
+          if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
+          xcodegen generate
+      - name: Build for iPhone and iPad without signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          xcodebuild build \
+            -project CountLog.xcodeproj -scheme CountLog \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            | tee build/xcodebuild.log
+      - name: Package and validate IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          test -n "$APP"
+          echo "Packaging $APP"
+          rm -rf dist
+          mkdir -p dist/Payload
+          cp -R "$APP" dist/Payload/
+          (cd dist && zip -qry CountLog-unsigned.ipa Payload)
+          (cd dist && shasum -a 256 CountLog-unsigned.ipa > SHA256SUMS.txt)
+          unzip -l dist/CountLog-unsigned.ipa | head -20
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: CountLog-unsigned-IPA
+          path: |
+            dist/CountLog-unsigned.ipa
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: build/xcodebuild.log
+          if-no-files-found: ignore
+          retention-days: 7
